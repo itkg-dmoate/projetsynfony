@@ -2851,7 +2851,7 @@ namespace
 {
 class Twig_Environment
 {
-const VERSION ='1.14.2';
+const VERSION ='1.15.0';
 protected $charset;
 protected $loader;
 protected $debug;
@@ -2878,7 +2878,6 @@ protected $templateClassPrefix ='__TwigTemplate_';
 protected $functionCallbacks;
 protected $filterCallbacks;
 protected $staging;
-protected $templateClasses;
 public function __construct(Twig_LoaderInterface $loader = null, $options = array())
 {
 if (null !== $loader) {
@@ -2895,7 +2894,6 @@ $this->runtimeInitialized = false;
 $this->setCache($options['cache']);
 $this->functionCallbacks = array();
 $this->filterCallbacks = array();
-$this->templateClasses = array();
 $this->addExtension(new Twig_Extension_Core());
 $this->addExtension(new Twig_Extension_Escaper($options['autoescape']));
 $this->addExtension(new Twig_Extension_Optimizer($options['optimizations']));
@@ -2964,12 +2962,7 @@ return $this->getCache().'/'.substr($class, 0, 2).'/'.substr($class, 2, 2).'/'.s
 }
 public function getTemplateClass($name, $index = null)
 {
-$suffix = null === $index ?'':'_'.$index;
-$cls = $name.$suffix;
-if (isset($this->templateClasses[$cls])) {
-return $this->templateClasses[$cls];
-}
-return $this->templateClasses[$cls] = $this->templateClassPrefix.hash('sha256', $this->getLoader()->getCacheKey($name)).$suffix;
+return $this->templateClassPrefix.hash('sha256', $this->getLoader()->getCacheKey($name)).(null === $index ?'':'_'.$index);
 }
 public function getTemplateClassPrefix()
 {
@@ -3625,6 +3618,7 @@ new Twig_SimpleFilter('format','sprintf'),
 new Twig_SimpleFilter('replace','strtr'),
 new Twig_SimpleFilter('number_format','twig_number_format_filter', array('needs_environment'=> true)),
 new Twig_SimpleFilter('abs','abs'),
+new Twig_SimpleFilter('round','twig_round'),
 new Twig_SimpleFilter('url_encode','twig_urlencode_filter'),
 new Twig_SimpleFilter('json_encode','twig_jsonencode_filter'),
 new Twig_SimpleFilter('convert_encoding','twig_convert_encoding'),
@@ -3659,12 +3653,15 @@ return $filters;
 public function getFunctions()
 {
 return array(
+new Twig_SimpleFunction('max','max'),
+new Twig_SimpleFunction('min','min'),
 new Twig_SimpleFunction('range','range'),
 new Twig_SimpleFunction('constant','twig_constant'),
 new Twig_SimpleFunction('cycle','twig_cycle'),
 new Twig_SimpleFunction('random','twig_random', array('needs_environment'=> true)),
 new Twig_SimpleFunction('date','twig_date_converter', array('needs_environment'=> true)),
 new Twig_SimpleFunction('include','twig_include', array('needs_environment'=> true,'needs_context'=> true,'is_safe'=> array('all'))),
+new Twig_SimpleFunction('source','twig_source', array('needs_environment'=> true,'is_safe'=> array('all'))),
 );
 }
 public function getTests()
@@ -3827,6 +3824,16 @@ $date->setTimezone($defaultTimezone);
 }
 return $date;
 }
+function twig_round($value, $precision = 0, $method ='common')
+{
+if ('common'== $method) {
+return round($value, $precision);
+}
+if ('ceil'!= $method &&'floor'!= $method) {
+throw new Twig_Error_Runtime('The round filter only supports the "common", "ceil", and "floor" methods.');
+}
+return $method($value * pow(10, $precision)) / pow(10, $precision);
+}
 function twig_number_format_filter(Twig_Environment $env, $number, $decimal = null, $decimalPoint = null, $thousandSep = null)
 {
 $defaults = $env->getExtension('core')->getNumberFormat();
@@ -3902,12 +3909,12 @@ return null === $length ? substr($item, $start) : substr($item, $start, $length)
 function twig_first(Twig_Environment $env, $item)
 {
 $elements = twig_slice($env, $item, 0, 1, false);
-return is_string($elements) ? $elements[0] : current($elements);
+return is_string($elements) ? $elements : current($elements);
 }
 function twig_last(Twig_Environment $env, $item)
 {
 $elements = twig_slice($env, $item, -1, 1, false);
-return is_string($elements) ? $elements[0] : current($elements);
+return is_string($elements) ? $elements : current($elements);
 }
 function twig_join_filter($value, $glue ='')
 {
@@ -4231,6 +4238,10 @@ throw $e;
 if ($isSandboxed && !$alreadySandboxed) {
 $sandbox->disableSandbox();
 }
+}
+function twig_source(Twig_Environment $env, $name)
+{
+return $env->getLoader()->getSource($name);
 }
 function twig_constant($constant, $object = null)
 {
@@ -4571,6 +4582,7 @@ return $object->$item;
 if (!isset(self::$cache[$class]['methods'])) {
 self::$cache[$class]['methods'] = array_change_key_case(array_flip(get_class_methods($object)));
 }
+$call = false;
 $lcItem = strtolower($item);
 if (isset(self::$cache[$class]['methods'][$lcItem])) {
 $method = (string) $item;
@@ -4580,6 +4592,7 @@ $method ='get'.$item;
 $method ='is'.$item;
 } elseif (isset(self::$cache[$class]['methods']['__call'])) {
 $method = (string) $item;
+$call = true;
 } else {
 if ($isDefinedTest) {
 return false;
@@ -4595,7 +4608,14 @@ return true;
 if ($this->env->hasExtension('sandbox')) {
 $this->env->getExtension('sandbox')->checkMethodAllowed($object, $method);
 }
+try {
 $ret = call_user_func_array(array($object, $method), $arguments);
+} catch (BadMethodCallException $e) {
+if ($call && ($ignoreStrictCheck || !$this->env->isStrictVariables())) {
+return null;
+}
+throw $e;
+}
 if ($object instanceof Twig_TemplateInterface) {
 return $ret ===''?'': new Twig_Markup($ret, $this->env->getCharset());
 }
