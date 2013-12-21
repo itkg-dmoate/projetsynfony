@@ -9,7 +9,6 @@ class BlogController extends Controller
 {
   public function indexAction()
   {
-      echo 'tata';
       $articles = array(
       array(
         'titre'   => 'Mon weekend a Phi Phi Island !',

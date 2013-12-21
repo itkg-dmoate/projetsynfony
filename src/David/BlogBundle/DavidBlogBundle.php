@@ -8,8 +8,3 @@ class DavidBlogBundle extends Bundle
 {
     
 }
-
-class dadaBlogBundle extends Bundle
-{
-    
-}
