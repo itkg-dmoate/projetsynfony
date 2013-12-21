@@ -9,7 +9,6 @@ class BlogController extends Controller
 {
   public function indexAction()
   {
-      print_r('test');
       $articles = array(
       array(
         'titre'   => 'Mon weekend a Phi Phi Island !',
