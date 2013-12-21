@@ -1,0 +1,6 @@
+david_blog:
+    resource: "@DavidBlogBundle/Resources/config/routing.yml"
+    prefix:   /blog
+    
+
+
